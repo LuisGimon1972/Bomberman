@@ -68,14 +68,14 @@ export class BombermanEngine {
         ctx.resume();
       }
 
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
       const now = ctx.currentTime;
 
       if (type === 'bomb') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
         // Som curto de colocação
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(300, now);
@@ -85,15 +85,55 @@ export class BombermanEngine {
         osc.start(now);
         osc.stop(now + 0.1);
       } else if (type === 'explode') {
-        // Estrondo grave de explosão
+        // --- ESTRONDO ÉPICO "BOOOOOOM" INTERGALÁCTICO ---
+
+        // 1. Sub-Bass Profundo e Prolongado (Sawtooth)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120, now);
-        osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
-        gain.gain.setValueAtTime(0.7, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(15, now + 1.2); // 1.2 segundos de duração
+
+        gain.gain.setValueAtTime(0.95, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 0.4);
+        osc.stop(now + 1.2);
+
+        // 2. Ruído de Fogo e Onda de Choque Estendida (White Noise Buffer)
+        const bufferSize = ctx.sampleRate * 1.2; // 1.2 segundos
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1000, now);
+        filter.frequency.linearRampToValueAtTime(80, now + 1.2);
+
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(1.0, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+
+        whiteNoise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+
+        whiteNoise.start(now);
+        whiteNoise.stop(now + 1.2);
       } else if (type === 'hurt') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
         // Som de dano / perda de vida
         osc.type = 'square';
         osc.frequency.setValueAtTime(200, now);
@@ -103,6 +143,11 @@ export class BombermanEngine {
         osc.start(now);
         osc.stop(now + 0.3);
       } else if (type === 'victory') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
         // Jingle triunfante de avanço de nível / vitória
         osc.type = 'sine';
         osc.frequency.setValueAtTime(330, now);
@@ -215,8 +260,9 @@ export class BombermanEngine {
       }
     }
 
+    // Atualização dos inimigos com envio do mapa, bombas e rastreio direto do jogador
     for (const enemy of this.enemies) {
-      enemy.update(this.map.grid, this.bombs);
+      enemy.update(this.map.grid, this.bombs, this.player);
 
       const dx = Math.abs(this.player.x + this.player.width / 2 - (enemy.x + enemy.width / 2));
       const dy = Math.abs(this.player.y + this.player.height / 2 - (enemy.y + enemy.height / 2));
@@ -237,7 +283,7 @@ export class BombermanEngine {
       const pGrid = this.player.getGridPosition();
       if (pGrid.r === this.map.doorPosition.r && pGrid.c === this.map.doorPosition.c) {
         this.level++;
-        this.playSound('victory'); // Toca o jingle de avanço de nível
+        this.playSound('victory');
 
         if (this.level > 5) {
           this.isVictory = true;
@@ -258,7 +304,6 @@ export class BombermanEngine {
         const x = c * TILE_SIZE;
         const y = r * TILE_SIZE;
 
-        // Fundo Intergaláctico nos caminhos vazios
         if (tile === TileType.EMPTY) {
           const cosmicGrad = ctx.createLinearGradient(x, y, x + TILE_SIZE, y + TILE_SIZE);
           cosmicGrad.addColorStop(0, '#090d16');
@@ -286,7 +331,6 @@ export class BombermanEngine {
           ctx.strokeStyle = '#334155';
           ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
         } else if (tile === TileType.WALL_DESTRUCTIBLE) {
-          // Blocos destrutíveis painel metálico espacial
           ctx.fillStyle = '#1e293b';
           ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
           ctx.strokeStyle = '#38bdf8';

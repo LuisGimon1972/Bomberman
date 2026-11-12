@@ -2,7 +2,7 @@
   <q-layout view="lHh Lpr lFf">
     <q-header elevated class="bg-primary text-white">
       <q-toolbar>
-        <q-toolbar-title>Arkanoid Evolution Game</q-toolbar-title>
+        <q-toolbar-title>Bomberman Evolution Game</q-toolbar-title>
         <div>Dev. Luis Manuel Gimón</div>
       </q-toolbar>
     </q-header>
