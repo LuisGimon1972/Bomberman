@@ -149,8 +149,12 @@ export class BombermanEngine {
 
     const gridPos = this.player.getGridPosition();
     const exists = this.bombs.some((b) => b.r === gridPos.r && b.c === gridPos.c);
+
+    // Usamos 99 como alcance máximo para cobrir todo o corredor disponível até encontrar uma parede
+    const maxRange = 99;
+
     if (!exists && this.player.activeBombs < this.player.bombLimit) {
-      this.bombs.push(new Bomb(gridPos.r, gridPos.c, this.player.fireRange));
+      this.bombs.push(new Bomb(gridPos.r, gridPos.c, maxRange));
       this.player.activeBombs++;
       this.playSound('bomb');
     }
@@ -212,7 +216,7 @@ export class BombermanEngine {
     }
 
     for (const enemy of this.enemies) {
-      enemy.update(this.map.grid);
+      enemy.update(this.map.grid, this.bombs);
 
       const dx = Math.abs(this.player.x + this.player.width / 2 - (enemy.x + enemy.width / 2));
       const dy = Math.abs(this.player.y + this.player.height / 2 - (enemy.y + enemy.height / 2));
