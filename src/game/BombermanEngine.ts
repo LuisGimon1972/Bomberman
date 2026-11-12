@@ -396,7 +396,7 @@ export class BombermanEngine {
       }
 
       const tileSize = 32;
-      const spriteW = 29;
+      const spriteW = 36;
       const spriteH = 29;
 
       const renderX = Math.round(this.player.x + (tileSize - spriteW) / 2 + 1);
