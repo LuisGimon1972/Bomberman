@@ -64,62 +64,71 @@
         </div>
       </div>
 
+      <!-- Barra inferior com o D-Pad em Cruz e os Botões de Ação -->
       <div class="row items-center justify-between full-width q-px-xs q-mt-xs control-bar">
-        <div class="row q-gutter-2x">
-          <q-btn
-            color="amber-8"
-            text-color="dark"
-            icon="arrow_back"
-            dense
-            unelevated
-            class="arcade-key"
-            @touchstart.prevent="setTouchMove(-1, 0)"
-            @touchend.prevent="setTouchMove(0, 0)"
-            @mousedown.prevent="setTouchMove(-1, 0)"
-            @mouseup.prevent="setTouchMove(0, 0)"
-            @mouseleave.prevent="setTouchMove(0, 0)"
-          />
-          <q-btn
-            color="amber-8"
-            text-color="dark"
-            icon="arrow_forward"
-            dense
-            unelevated
-            class="arcade-key"
-            @touchstart.prevent="setTouchMove(1, 0)"
-            @touchend.prevent="setTouchMove(0, 0)"
-            @mousedown.prevent="setTouchMove(1, 0)"
-            @mouseup.prevent="setTouchMove(0, 0)"
-            @mouseleave.prevent="setTouchMove(0, 0)"
-          />
+        <!-- D-Pad Arcade em Cruz -->
+        <div class="column items-center q-gutter-2xs">
           <q-btn
             color="amber-8"
             text-color="dark"
             icon="arrow_upward"
             dense
             unelevated
-            class="arcade-key"
-            @touchstart.prevent="setTouchMove(0, -1)"
-            @touchend.prevent="setTouchMove(0, 0)"
-            @mousedown.prevent="setTouchMove(0, -1)"
-            @mouseup.prevent="setTouchMove(0, 0)"
-            @mouseleave.prevent="setTouchMove(0, 0)"
+            tabindex="-1"
+            class="arcade-key text-weight-bold"
+            @touchstart.prevent.stop="setTouchMove(0, -1)"
+            @touchend.prevent.stop="setTouchMove(0, 0)"
+            @mousedown.prevent.stop="setTouchMove(0, -1)"
+            @mouseup.prevent.stop="setTouchMove(0, 0)"
+            @mouseleave.prevent.stop="setTouchMove(0, 0)"
           />
-          <q-btn
-            color="amber-8"
-            text-color="dark"
-            icon="arrow_downward"
-            dense
-            unelevated
-            class="arcade-key"
-            @touchstart.prevent="setTouchMove(0, 1)"
-            @touchend.prevent="setTouchMove(0, 0)"
-            @mousedown.prevent="setTouchMove(0, 1)"
-            @mouseup.prevent="setTouchMove(0, 0)"
-            @mouseleave.prevent="setTouchMove(0, 0)"
-          />
+          <div class="row q-gutter-2xs">
+            <q-btn
+              color="amber-8"
+              text-color="dark"
+              icon="arrow_back"
+              dense
+              unelevated
+              tabindex="-1"
+              class="arcade-key text-weight-bold"
+              @touchstart.prevent.stop="setTouchMove(-1, 0)"
+              @touchend.prevent.stop="setTouchMove(0, 0)"
+              @mousedown.prevent.stop="setTouchMove(-1, 0)"
+              @mouseup.prevent.stop="setTouchMove(0, 0)"
+              @mouseleave.prevent.stop="setTouchMove(0, 0)"
+            />
+            <q-btn
+              color="amber-8"
+              text-color="dark"
+              icon="arrow_downward"
+              dense
+              unelevated
+              tabindex="-1"
+              class="arcade-key text-weight-bold"
+              @touchstart.prevent.stop="setTouchMove(0, 1)"
+              @touchend.prevent.stop="setTouchMove(0, 0)"
+              @mousedown.prevent.stop="setTouchMove(0, 1)"
+              @mouseup.prevent.stop="setTouchMove(0, 0)"
+              @mouseleave.prevent.stop="setTouchMove(0, 0)"
+            />
+            <q-btn
+              color="amber-8"
+              text-color="dark"
+              icon="arrow_forward"
+              dense
+              unelevated
+              tabindex="-1"
+              class="arcade-key text-weight-bold"
+              @touchstart.prevent.stop="setTouchMove(1, 0)"
+              @touchend.prevent.stop="setTouchMove(0, 0)"
+              @mousedown.prevent.stop="setTouchMove(1, 0)"
+              @mouseup.prevent.stop="setTouchMove(0, 0)"
+              @mouseleave.prevent.stop="setTouchMove(0, 0)"
+            />
+          </div>
         </div>
 
+        <!-- Botões de Ação do Jogo -->
         <div class="row q-gutter-xs items-center">
           <q-btn
             color="red-8"
@@ -438,7 +447,7 @@ onUnmounted(() => {
 .glow-effect {
   text-shadow:
     0 0 20px rgba(74, 222, 128, 0.8),
-    0 z 40px rgba(56, 189, 248, 0.6);
+    0 0 40px rgba(56, 189, 248, 0.6);
   animation: victoryPulse 1.5s ease-in-out infinite alternate;
 }
 
