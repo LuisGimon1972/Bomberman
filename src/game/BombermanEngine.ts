@@ -85,25 +85,25 @@ export class BombermanEngine {
         osc.start(now);
         osc.stop(now + 0.1);
       } else if (type === 'explode') {
-        // --- ESTRONDO ÉPICO "BOOOOOOM" INTERGALÁCTICO ---
+        // --- ESTRONDO DE EXPLOSÃO ULTRA-REALISTA (Sub-Bass + Ruído Branco Filtrado) ---
 
-        // 1. Sub-Bass Profundo e Prolongado (Sawtooth)
+        // 1. Som Grave de Impacto Profundo (Sawtooth)
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(180, now);
-        osc.frequency.exponentialRampToValueAtTime(15, now + 1.2); // 1.2 segundos de duração
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.6);
 
-        gain.gain.setValueAtTime(0.95, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+        gain.gain.setValueAtTime(0.8, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 1.2);
+        osc.stop(now + 0.6);
 
-        // 2. Ruído de Fogo e Onda de Choque Estendida (White Noise Buffer)
-        const bufferSize = ctx.sampleRate * 1.2; // 1.2 segundos
+        // 2. Ruído Branco Dinâmico para simular o fogo e estilhaços espaciais
+        const bufferSize = ctx.sampleRate * 0.7; // 700ms
         const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const output = noiseBuffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
@@ -115,19 +115,19 @@ export class BombermanEngine {
 
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(1000, now);
-        filter.frequency.linearRampToValueAtTime(80, now + 1.2);
+        filter.frequency.setValueAtTime(800, now);
+        filter.frequency.linearRampToValueAtTime(100, now + 0.7);
 
         const noiseGain = ctx.createGain();
-        noiseGain.gain.setValueAtTime(1.0, now);
-        noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+        noiseGain.gain.setValueAtTime(0.9, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
 
         whiteNoise.connect(filter);
         filter.connect(noiseGain);
         noiseGain.connect(ctx.destination);
 
         whiteNoise.start(now);
-        whiteNoise.stop(now + 1.2);
+        whiteNoise.stop(now + 0.7);
       } else if (type === 'hurt') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
