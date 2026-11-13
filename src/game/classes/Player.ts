@@ -5,25 +5,21 @@ export class Player {
   public y: number;
   public width: number = 32;
   public height: number = 32;
-  public speed: number = 2.5; // Velocidade de movimento suave
+  public speed: number = 2.5;
   public lives: number = 3;
   public isAlive: boolean = true;
-
-  // Capacidades melhoradas do jogador
-  public bombLimit: number = 1; // Número máximo de bombas em simultâneo
-  public activeBombs: number = 0; // Bombas atualmente colocadas
-  public fireRange: number = 2; // Alcance das chamas da explosão
+  public bombLimit: number = 1;
+  public activeBombs: number = 0;
+  public fireRange: number = 2;
 
   constructor(startX: number, startY: number) {
     this.x = startX;
     this.y = startY;
   }
 
-  // Atualiza a posição com base nas teclas pressionadas e verifica colisões com o mapa
   public update(moveDir: { x: number; y: number }, grid: number[][]) {
     if (!this.isAlive) return;
 
-    // Movimento no eixo X com colisão
     if (moveDir.x !== 0) {
       const nextX = this.x + moveDir.x * this.speed;
       if (!this.checkCollision(nextX, this.y, grid)) {
@@ -31,7 +27,6 @@ export class Player {
       }
     }
 
-    // Movimento no eixo Y com colisão
     if (moveDir.y !== 0) {
       const nextY = this.y + moveDir.y * this.speed;
       if (!this.checkCollision(this.x, nextY, grid)) {
@@ -40,9 +35,7 @@ export class Player {
     }
   }
 
-  // Verifica se a bounding box do jogador colide com blocos sólidos do mapa
   private checkCollision(x: number, y: number, grid: number[][]): boolean {
-    // Margem de tolerância (hitbox ligeiramente menor para facilitar a passagem por corredores)
     const margin = 6;
     const left = x + margin;
     const right = x + this.width - margin;
@@ -61,17 +54,16 @@ export class Player {
         const tile = grid[corner.r]![corner.c];
         // O jogador colide com paredes indestrutíveis, blocos destrutíveis e portas fechadas/ocultas
         if (tile === TileType.WALL_INDESCTRUCTIBLE || tile === TileType.WALL_DESTRUCTIBLE) {
-          return true; // Há colisão
+          return true;
         }
       } else {
-        return true; // Fora dos limites do mapa
+        return true;
       }
     }
 
-    return false; // Sem colisão
+    return false;
   }
 
-  // Devolve a coordenada atual do grid (linha e coluna) onde o centro do jogador está
   public getGridPosition(): { r: number; c: number } {
     return {
       r: Math.floor((this.y + this.height / 2) / TILE_SIZE),

@@ -37,9 +37,9 @@ export class BombermanMap {
           continue;
         }
 
-        // Densidade reduzida (25%) para garantir que há sempre espaço aberto à volta de cada bloco
+        // Densidade reduzida (25%) para garantir espaço aberto e rotas de fuga aos inimigos
         if (this.grid[r]![c] === TileType.EMPTY && Math.random() < 0.25) {
-          // Evita colocar blocos destrutíveis em cruzamentos para dar total liberdade aos inimigos
+          // Evita colocar blocos destrutíveis em cruzamentos para dar total liberdade de circulação
           const isIntersection = r % 2 !== 0 && c % 2 !== 0;
           if (!isIntersection) {
             this.grid[r]![c] = TileType.WALL_DESTRUCTIBLE;
@@ -53,7 +53,7 @@ export class BombermanMap {
       }
     }
 
-    // 3. Escolhe a porta prioritariamente num bloco destrutível da borda
+    // 3. Escolhe a porta prioritariamente num bloco destrutível da borda; se não houver, escolhe nos normais
     const candidateBlocks =
       borderDestructibleBlocks.length > 0 ? borderDestructibleBlocks : destructibleBlocks;
 
@@ -66,13 +66,15 @@ export class BombermanMap {
     }
   }
 
+  // Executado quando uma bomba explode numa coordenada (r, c)
   public hitTile(r: number, c: number): boolean {
     if (this.grid[r]![c] === TileType.WALL_DESTRUCTIBLE) {
+      // Se este bloco continha a porta secreta, revela-o imediatamente como um portal dourado!
       if (this.doorPosition && this.doorPosition.r === r && this.doorPosition.c === c) {
         this.isDoorRevealed = true;
         this.grid[r]![c] = TileType.DOOR;
       } else {
-        this.grid[r]![c] = TileType.EMPTY;
+        this.grid[r]![c] = TileType.EMPTY; // Bloco normal destruído
       }
       return true;
     }

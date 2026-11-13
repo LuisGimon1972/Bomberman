@@ -1,18 +1,17 @@
 <template>
   <q-page
-    class="flex flex-center arcade-bg text-white q-pa-sm column justify-start"
+    class="flex flex-center arcade-bg text-white q-pa-xs column justify-start"
     style="min-height: 100vh; overflow-y: auto"
     @click="focusGame"
   >
     <div
       ref="wrapperRef"
-      class="column items-center justify-center q-gutter-sm bomberman-main-wrapper q-my-md"
+      class="column items-center justify-center q-gutter-xs bomberman-main-wrapper q-my-xs"
       tabindex="0"
     >
-      <h5 class="game-title q-my-sm">Bomberman Evolution</h5>
+      <h6 style="margin-top: -25px">Bomberman Evolution Game</h6>
 
-      <!-- HUD de Informações -->
-      <q-card flat class="glass-hud q-px-sm q-py-none full-width shadow-6">
+      <q-card style="margin-top: -20px" flat class="glass-hud q-px-sm q-py-xs full-width shadow-6">
         <div
           class="row justify-between items-center text-weight-bold"
           style="font-size: 13px; line-height: 1.2"
@@ -29,23 +28,34 @@
         </div>
       </q-card>
 
-      <!-- Contentor do Jogo / Canvas -->
       <div class="bomberman-container relative-position shadow-20">
-        <canvas ref="canvasRef" width="600" height="520" class="bomberman-canvas"></canvas>
+        <canvas ref="canvasRef" width="525" height="455" class="bomberman-canvas"></canvas>
 
-        <!-- Overlay de Fim de Jogo / Vitória -->
+        <!-- Efeito de Confetes / Partículas de Vitória Épica -->
+        <div v-if="isVictory" class="victory-confetti-container absolute-full pointer-events-none">
+          <span
+            v-for="n in 35"
+            :key="n"
+            class="confetti-piece"
+            :style="getRandomConfettiStyle(n)"
+          ></span>
+        </div>
+
         <div
           v-if="isGameOver || isVictory"
           class="absolute-full flex flex-center overlay-bg column q-gutter-md rounded-borders q-pa-md"
         >
           <div
             class="text-h5 text-weight-bold text-center"
-            :class="isVictory ? 'text-green-4' : 'text-red-5'"
+            :class="isVictory ? 'victory-title text-green-4 glow-effect' : 'text-red-5'"
           >
             {{ isVictory ? '🎉 VITÓRIA ÉPICA! 🎉' : '⚠️ GAME OVER ⚠️' }}
           </div>
+          <div v-if="isVictory" class="text-subtitle2 text-amber-3 text-center q-mt-none">
+            Parabéns! Salvaste a Galáxia com Sucesso! 🚀✨
+          </div>
           <q-btn
-            class="action-btn"
+            class="action-btn q-px-lg q-py-sm text-weight-bold animate-pulse"
             color="amber-6"
             text-color="dark"
             icon="replay"
@@ -55,10 +65,8 @@
         </div>
       </div>
 
-      <!-- Barra de Controlos Táteis e de Ação para Telemóveis e Tablets -->
-      <div class="row items-center justify-between full-width q-px-sm q-mt-xs">
-        <!-- D-Pad Direcional -->
-        <div class="row q-gutter-xs">
+      <div class="row items-center justify-between full-width q-px-xs q-mt-xs control-bar">
+        <div class="row q-gutter-2x">
           <q-btn
             color="amber-8"
             text-color="dark"
@@ -113,29 +121,38 @@
           />
         </div>
 
-        <!-- Botão de Colocar Bomba -->
-        <q-btn
-          color="red-8"
-          text-color="white"
-          icon="radio_button_checked"
-          label="Bomba"
-          dense
-          unelevated
-          class="action-btn q-px-sm"
-          @click="triggerBomb"
-        />
+        <div class="row q-gutter-xs items-center">
+          <q-btn
+            color="red-8"
+            text-color="white"
+            icon="radio_button_checked"
+            label="Bomba"
+            dense
+            unelevated
+            class="action-btn q-px-sm"
+            @click="triggerBomb"
+          />
 
-        <!-- Botão Sair -->
-        <q-btn
-          color="deep-orange-9"
-          text-color="white"
-          icon="exit_to_app"
-          label="Sair"
-          dense
-          unelevated
-          class="action-btn q-px-sm"
-          @click="exitGame"
-        />
+          <q-btn
+            color="green-8"
+            text-color="white"
+            icon="restart_alt"
+            dense
+            unelevated
+            class="action-btn q-px-sm"
+            @click="restartGame"
+          />
+
+          <q-btn
+            color="deep-orange-9"
+            text-color="white"
+            icon="exit_to_app"
+            dense
+            unelevated
+            class="action-btn q-px-sm"
+            @click="exitGame"
+          />
+        </div>
       </div>
     </div>
   </q-page>
@@ -158,6 +175,23 @@ const isGameOver = ref(false);
 const isVictory = ref(false);
 
 const activeKeys = { left: false, right: false, up: false, down: false };
+
+// Gerador aleatório elegante para partículas de confete na vitória
+const getRandomConfettiStyle = (n: number) => {
+  const colors = ['#facc15', '#38bdf8', '#ef4444', '#4ade80', '#c084fc', '#fb923c'];
+  const left = (n * 3.1) % 100;
+  const animDuration = 2 + (n % 3);
+  const animDelay = (n * 0.15) % 2;
+  const size = 6 + (n % 6);
+  return {
+    left: `${left}%`,
+    backgroundColor: colors[n % colors.length]!,
+    width: `${size}px`,
+    height: `${size * 1.4}px`,
+    animationDuration: `${animDuration}s`,
+    animationDelay: `${animDelay}s`,
+  };
+};
 
 const updateEngineDirection = () => {
   if (!engine) return;
@@ -205,7 +239,7 @@ const setTouchMove = (x: number, y: number) => {
 
 const triggerBomb = () => {
   if (engine) {
-    engine.placeBomb();
+    engine.requestBomb();
   }
   focusGame();
 };
@@ -228,32 +262,32 @@ const restartGame = () => {
 };
 
 const handleKeyDown = (e: KeyboardEvent) => {
-  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.code)) {
     e.preventDefault();
     e.stopPropagation();
   }
 
-  if (e.key === 'ArrowLeft') activeKeys.left = true;
-  if (e.key === 'ArrowRight') activeKeys.right = true;
-  if (e.key === 'ArrowUp') activeKeys.up = true;
-  if (e.key === 'ArrowDown') activeKeys.down = true;
+  if (e.code === 'ArrowLeft') activeKeys.left = true;
+  if (e.code === 'ArrowRight') activeKeys.right = true;
+  if (e.code === 'ArrowUp') activeKeys.up = true;
+  if (e.code === 'ArrowDown') activeKeys.down = true;
   updateEngineDirection();
 
-  if (e.key === ' ' && engine) {
-    engine.placeBomb();
+  if (e.code === 'Space' && engine && !e.repeat) {
+    engine.requestBomb();
   }
 };
 
 const handleKeyUp = (e: KeyboardEvent) => {
-  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.code)) {
     e.preventDefault();
     e.stopPropagation();
   }
 
-  if (e.key === 'ArrowLeft') activeKeys.left = false;
-  if (e.key === 'ArrowRight') activeKeys.right = false;
-  if (e.key === 'ArrowUp') activeKeys.up = false;
-  if (e.key === 'ArrowDown') activeKeys.down = false;
+  if (e.code === 'ArrowLeft') activeKeys.left = false;
+  if (e.code === 'ArrowRight') activeKeys.right = false;
+  if (e.code === 'ArrowUp') activeKeys.up = false;
+  if (e.code === 'ArrowDown') activeKeys.down = false;
   updateEngineDirection();
 };
 
@@ -282,8 +316,8 @@ onMounted(() => {
     gameLoop();
   }
 
-  window.addEventListener('keydown', handleKeyDown, true);
-  window.addEventListener('keyup', handleKeyUp, true);
+  window.addEventListener('keydown', handleKeyDown, { capture: true });
+  window.addEventListener('keyup', handleKeyUp, { capture: true });
   window.addEventListener('click', focusGame);
 
   setTimeout(() => {
@@ -313,28 +347,21 @@ onUnmounted(() => {
     rgba(30, 41, 59, 0.8) 0%,
     rgba(3, 7, 18, 1) 100%
   );
-  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .bomberman-main-wrapper {
-  max-width: 620px;
+  max-width: 540px;
   width: 100%;
   margin: 0 auto;
   outline: none;
 }
 
-.game-title {
-  font-size: 1.15rem;
-  font-weight: bold;
-  text-align: center;
-}
-
 .glass-hud {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.9);
   backdrop-filter: blur(12px);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 6px 12px !important;
 }
 
 .bomberman-container {
@@ -343,8 +370,8 @@ onUnmounted(() => {
   border: 2px solid rgba(255, 255, 255, 0.15);
   overflow: hidden;
   width: 100%;
-  max-width: 600px;
-  aspect-ratio: 600 / 520;
+  max-width: 525px;
+  aspect-ratio: 525 / 455;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -358,31 +385,95 @@ onUnmounted(() => {
 }
 
 .arcade-key {
-  width: 44px;
+  width: 42px;
   height: 40px;
+  font-size: 18px;
 }
 
 .action-btn {
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: 11px;
+  padding: 6px 10px;
   border-radius: 6px;
+  font-weight: bold;
 }
 
 .overlay-bg {
-  background-color: rgba(3, 7, 18, 0.95);
+  background-color: rgba(3, 7, 18, 0.92);
   backdrop-filter: blur(8px);
   z-index: 10;
 }
 
-/* Responsividade para Phones e Tablets */
-@media (max-width: 600px) {
+/* Animações e Efeitos Visuais para a Vitória Épica */
+.victory-confetti-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  border-radius: 2px;
+  animation: confettiFall linear infinite;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(480px) rotate(720deg);
+    opacity: 0.2;
+  }
+}
+
+.glow-effect {
+  text-shadow:
+    0 0 20px rgba(74, 222, 128, 0.8),
+    0 z 40px rgba(56, 189, 248, 0.6);
+  animation: victoryPulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes victoryPulse {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.06);
+  }
+}
+
+/* Responsividade Adaptativa para Tablets e Smartphones */
+@media (max-width: 560px) {
+  .bomberman-main-wrapper {
+    padding: 0 4px;
+  }
   .arcade-key {
     width: 38px;
     height: 36px;
   }
   .action-btn {
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: 10px;
+    padding: 5px 8px;
+  }
+}
+
+@media (max-height: 700px) {
+  .arcade-bg {
+    padding-top: 2px !important;
+  }
+  .bomberman-main-wrapper {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+  h6 {
+    display: none;
   }
 }
 </style>

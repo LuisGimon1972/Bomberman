@@ -7,7 +7,7 @@ import { Enemy } from './classes/Enemy';
 import { PlayerAtlas } from './classes/PlayerAtlas';
 
 type Direction = { x: number; y: number };
-type SoundEffect = 'bomb' | 'explode' | 'hurt' | 'victory';
+type SoundEffect = 'bomb' | 'explode' | 'hurt' | 'victory' | 'extralife';
 
 const PLAYER_START = {
   x: TILE_SIZE + 4,
@@ -20,6 +20,7 @@ const PLAYER_INVULNERABILITY_MS = 1_000;
 const ENEMY_SCORE = 200;
 const BOMB_RANGE = 99;
 const ENEMY_SPAWN_ATTEMPTS = 250;
+const BOMB_INPUT_BUFFER_MS = 2_000; // Buffer estendido para garantir a execução imediata
 
 export class BombermanEngine {
   public map: BombermanMap;
@@ -35,8 +36,16 @@ export class BombermanEngine {
   public isVictory = false;
   public moveDir: Direction = { x: 0, y: 0 };
 
+  // Coração bónus exclusivo do Nível 5
+  public heartBonus: { r: number; c: number; collected: boolean } | null = null;
+
   private lastTime = 0;
   private respawnAt: number | null = null;
+  private spawnInvulnerabilityUntil = 0;
+  private lastLifeScoreThreshold = 0;
+  private bombRequestAt: number | null = null;
+  private bombRequestToken = 0;
+  private placedBombToken = -1;
   private audioCtx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private readonly playerAtlas: PlayerAtlas;
@@ -79,7 +88,15 @@ export class BombermanEngine {
     this.explosions = [];
     this.enemies = [];
     this.respawnAt = null;
+    this.bombRequestAt = null;
     this.lastTime = 0;
+    this.heartBonus = null;
+
+    this.spawnInvulnerabilityUntil = performance.now() + 1500;
+
+    if (this.level === 5) {
+      this.spawnHeartBonus();
+    }
 
     const enemyCount = 2 + this.level;
     for (let i = 0; i < enemyCount; i++) {
@@ -87,16 +104,84 @@ export class BombermanEngine {
     }
   }
 
-  public placeBomb(): void {
-    if (!this.player.isAlive || this.isGameOver || this.isVictory) return;
+  private spawnHeartBonus(): void {
+    const destructibleTiles: { r: number; c: number }[] = [];
+    for (let r = 0; r < this.map.grid.length; r++) {
+      for (let c = 0; c < (this.map.grid[r]?.length ?? 0); c++) {
+        if (this.map.grid[r]?.[c] === TileType.WALL_DESTRUCTIBLE && !(r <= 3 && c <= 3)) {
+          destructibleTiles.push({ r, c });
+        }
+      }
+    }
+    if (destructibleTiles.length > 0) {
+      const chosen = destructibleTiles[Math.floor(Math.random() * destructibleTiles.length)];
+      if (chosen) {
+        this.heartBonus = { r: chosen.r, c: chosen.c, collected: false };
+      }
+    }
+  }
 
+  /**
+   * Colocação garantida de bomba com tolerância de grelha otimizada.
+   */
+  public placeBomb(): boolean {
+    if (!this.player.isAlive || this.isGameOver || this.isVictory) return false;
+    if (this.player.activeBombs >= this.player.bombLimit) return false;
+
+    // Obtém a célula central atual do jogador com base no centro do sprite
     const { r, c } = this.player.getGridPosition();
-    const alreadyOccupied = this.bombs.some((bomb) => bomb.r === r && bomb.c === c);
 
-    if (!alreadyOccupied && this.player.activeBombs < this.player.bombLimit) {
-      this.bombs.push(new Bomb(r, c, BOMB_RANGE));
-      this.player.activeBombs += 1;
-      this.playSound('bomb');
+    // Validações robustas de disponibilidade da célula
+    if (!this.isBombCellFree(r, c)) return false;
+    if (this.bombs.some((bomb) => bomb.r === r && bomb.c === c)) return false;
+
+    this.bombs.push(new Bomb(r, c, BOMB_RANGE));
+    this.player.activeBombs += 1;
+    this.placedBombToken = this.bombRequestToken;
+    this.playSound('bomb');
+    return true;
+  }
+
+  private isBombCellFree(r: number, c: number): boolean {
+    const rowCount = this.map.grid.length;
+    const columnCount = this.map.grid[0]?.length ?? 0;
+
+    if (r < 0 || r >= rowCount || c < 0 || c >= columnCount) return false;
+    return this.map.grid[r]?.[c] === TileType.EMPTY;
+  }
+
+  public requestBomb(): void {
+    if (this.isGameOver || this.isVictory) return;
+
+    this.bombRequestToken += 1;
+    this.bombRequestAt = performance.now();
+
+    try {
+      this.tryPlaceRequestedBomb();
+    } catch {
+      this.bombRequestAt = null;
+    }
+  }
+
+  private tryPlaceRequestedBomb(): void {
+    if (this.bombRequestAt === null) return;
+
+    if (this.placedBombToken === this.bombRequestToken) {
+      this.bombRequestAt = null;
+      return;
+    }
+
+    if (performance.now() - this.bombRequestAt > BOMB_INPUT_BUFFER_MS) {
+      this.bombRequestAt = null;
+      return;
+    }
+
+    try {
+      if (this.placeBomb()) {
+        this.bombRequestAt = null;
+      }
+    } catch {
+      this.bombRequestAt = null;
     }
   }
 
@@ -108,11 +193,21 @@ export class BombermanEngine {
       ? Math.min((now - this.lastTime) / 1_000, MAX_FRAME_DELTA_SECONDS)
       : 1 / 60;
     this.lastTime = now;
-
     this.updateRespawn(now);
+
+    if (this.score - this.lastLifeScoreThreshold >= 1000) {
+      const extraLives = Math.floor((this.score - this.lastLifeScoreThreshold) / 1000);
+      this.lives += extraLives;
+      this.lastLifeScoreThreshold += extraLives * 1000;
+      this.playSound('extralife');
+    }
+
+    // Processa a tentativa pendente a cada frame para garantir que nunca falha
+    this.tryPlaceRequestedBomb();
 
     if (this.player.isAlive) {
       this.player.update(this.moveDir, this.map.grid);
+      this.checkHeartCollection();
     }
 
     this.updateBombs(dt);
@@ -121,13 +216,31 @@ export class BombermanEngine {
     this.updateLevelProgress();
   }
 
+  private checkHeartCollection(): void {
+    if (!this.heartBonus || this.heartBonus.collected) return;
+    const playerGrid = this.player.getGridPosition();
+    if (playerGrid.r === this.heartBonus.r && playerGrid.c === this.heartBonus.c) {
+      const tile = this.map.grid[this.heartBonus.r]?.[this.heartBonus.c];
+      if (tile === TileType.EMPTY) {
+        this.heartBonus.collected = true;
+        this.lives += 1;
+        this.playSound('extralife');
+      }
+    }
+  }
+
   public render(ctx: CanvasRenderingContext2D): void {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     this.renderMap(ctx);
+    this.renderHeartBonus(ctx);
     this.renderBombs(ctx);
     this.renderExplosions(ctx);
     this.renderEnemies(ctx);
     this.renderPlayer(ctx);
+
+    if (this.isVictory) {
+      this.renderVictoryEffects(ctx);
+    }
   }
 
   private getAudioContext(): AudioContext | null {
@@ -181,13 +294,22 @@ export class BombermanEngine {
           this.playVictorySound(ctx, now);
           break;
 
+        case 'extralife':
+          this.playExtraLifeSound(ctx, now);
+          break;
+
         case 'explode':
-          this.playExplosionSound(ctx, now);
+          this.playTone(ctx, now, {
+            oscillator: 'square',
+            startFrequency: 220,
+            endFrequency: 40,
+            duration: 0.3,
+            volume: 0.4,
+            exponentialFrequency: true,
+          });
           break;
       }
-    } catch {
-      // O jogo continua normalmente quando a API de áudio não está disponível.
-    }
+    } catch {}
   }
 
   private playTone(
@@ -235,52 +357,34 @@ export class BombermanEngine {
     oscillator.frequency.setValueAtTime(440, now + 0.12);
     oscillator.frequency.setValueAtTime(554.37, now + 0.24);
     oscillator.frequency.setValueAtTime(659.25, now + 0.36);
+    oscillator.frequency.setValueAtTime(880, now + 0.48);
 
     gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
 
     oscillator.connect(gain);
     gain.connect(ctx.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.6);
+    oscillator.stop(now + 0.8);
   }
 
-  private playExplosionSound(ctx: AudioContext, now: number): void {
-    this.playTone(ctx, now, {
-      oscillator: 'sawtooth',
-      startFrequency: 150,
-      endFrequency: 20,
-      duration: 0.6,
-      volume: 0.8,
-      exponentialFrequency: true,
-    });
-
-    if (!this.noiseBuffer || this.noiseBuffer.sampleRate !== ctx.sampleRate) {
-      const bufferSize = Math.floor(ctx.sampleRate * 0.7);
-      this.noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const output = this.noiseBuffer.getChannelData(0);
-
-      for (let i = 0; i < output.length; i++) {
-        output[i] = Math.random() * 2 - 1;
-      }
-    }
-
-    const whiteNoise = ctx.createBufferSource();
-    const filter = ctx.createBiquadFilter();
+  private playExtraLifeSound(ctx: AudioContext, now: number): void {
+    const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    whiteNoise.buffer = this.noiseBuffer;
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, now);
-    filter.frequency.linearRampToValueAtTime(100, now + 0.7);
-    gain.gain.setValueAtTime(0.9, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(440, now);
+    oscillator.frequency.setValueAtTime(554.37, now + 0.1);
+    oscillator.frequency.setValueAtTime(659.25, now + 0.2);
+    oscillator.frequency.setValueAtTime(880, now + 0.3);
 
-    whiteNoise.connect(filter);
-    filter.connect(gain);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+    oscillator.connect(gain);
     gain.connect(ctx.destination);
-    whiteNoise.start(now);
-    whiteNoise.stop(now + 0.7);
+    oscillator.start(now);
+    oscillator.stop(now + 0.5);
   }
 
   private spawnRandomEnemy(): boolean {
@@ -300,7 +404,8 @@ export class BombermanEngine {
       });
 
       if (this.map.grid[r]?.[c] === TileType.EMPTY && !isSpawnArea && !isOccupied) {
-        this.enemies.push(new Enemy(r, c));
+        const isAdvanced = this.level >= 4;
+        this.enemies.push(new Enemy(r, c, isAdvanced));
         return true;
       }
     }
@@ -353,10 +458,14 @@ export class BombermanEngine {
   }
 
   private updateEnemies(): void {
+    const now = performance.now();
+    const isInvulnerable =
+      now < this.spawnInvulnerabilityUntil || (this.respawnAt !== null && now < this.respawnAt);
+
     for (const enemy of this.enemies) {
       enemy.update(this.map.grid, this.bombs, this.player);
 
-      if (this.player.isAlive && this.entitiesOverlap(this.player, enemy)) {
+      if (this.player.isAlive && !isInvulnerable && this.entitiesOverlap(this.player, enemy)) {
         this.damagePlayer();
       }
     }
@@ -374,6 +483,7 @@ export class BombermanEngine {
 
     this.player.isAlive = false;
     this.lives = Math.max(0, this.lives - 1);
+    this.bombRequestAt = null;
     this.playSound('hurt');
 
     if (this.lives === 0) {
@@ -392,14 +502,17 @@ export class BombermanEngine {
     const playerGrid = this.player.getGridPosition();
     if (playerGrid.r !== door.r || playerGrid.c !== door.c) return;
 
-    this.playSound('victory');
-
     if (this.level >= MAX_LEVEL) {
       this.isVictory = true;
+      this.playSound('victory');
       return;
     }
 
+    this.playSound('victory');
     this.level += 1;
+    this.lives += 1;
+    this.playSound('extralife');
+    this.bombRequestAt = null;
     this.initLevel();
   }
 
@@ -431,6 +544,8 @@ export class BombermanEngine {
   }
 
   private renderMap(ctx: CanvasRenderingContext2D): void {
+    const isDangerousLevel = this.level >= 4;
+
     for (let r = 0; r < this.map.grid.length; r++) {
       const row = this.map.grid[r]!;
 
@@ -439,20 +554,21 @@ export class BombermanEngine {
         const x = c * TILE_SIZE;
         const y = r * TILE_SIZE;
 
-        this.renderTileBackground(ctx, tile, r, c, x, y);
+        this.renderTileBackground(ctx, tile, r, c, x, y, isDangerousLevel);
 
         switch (tile) {
           case TileType.WALL_INDESCTRUCTIBLE:
-            ctx.fillStyle = '#475569';
+            ctx.fillStyle = isDangerousLevel ? '#331c1c' : '#475569';
             ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-            ctx.strokeStyle = '#334155';
+            ctx.strokeStyle = isDangerousLevel ? '#7f1d1d' : '#334155';
+            ctx.lineWidth = isDangerousLevel ? 2 : 1;
             ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
             break;
 
           case TileType.WALL_DESTRUCTIBLE:
-            ctx.fillStyle = '#1e293b';
+            ctx.fillStyle = isDangerousLevel ? '#2e1065' : '#1e293b';
             ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-            ctx.strokeStyle = '#38bdf8';
+            ctx.strokeStyle = isDangerousLevel ? '#ef4444' : '#38bdf8';
             ctx.lineWidth = 1.5;
             ctx.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
             break;
@@ -465,6 +581,25 @@ export class BombermanEngine {
     }
   }
 
+  private renderHeartBonus(ctx: CanvasRenderingContext2D): void {
+    if (!this.heartBonus || this.heartBonus.collected) return;
+    const tile = this.map.grid[this.heartBonus.r]?.[this.heartBonus.c];
+    if (tile === TileType.EMPTY) {
+      const x = this.heartBonus.c * TILE_SIZE;
+      const y = this.heartBonus.r * TILE_SIZE;
+      const pulse = Math.sin(performance.now() / 150) * 3;
+
+      ctx.save();
+      ctx.font = `${TILE_SIZE * 0.65 + pulse}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ec4899';
+      ctx.shadowBlur = 12;
+      ctx.fillText('❤️', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+      ctx.restore();
+    }
+  }
+
   private renderTileBackground(
     ctx: CanvasRenderingContext2D,
     tile: TileType,
@@ -472,6 +607,7 @@ export class BombermanEngine {
     column: number,
     x: number,
     y: number,
+    isDangerousLevel: boolean,
   ): void {
     if (tile !== TileType.EMPTY) {
       ctx.fillStyle = '#000000';
@@ -480,18 +616,25 @@ export class BombermanEngine {
     }
 
     const gradient = ctx.createLinearGradient(x, y, x + TILE_SIZE, y + TILE_SIZE);
-    gradient.addColorStop(0, '#090d16');
-    gradient.addColorStop(0.5, '#131b2e');
-    gradient.addColorStop(1, '#05070c');
+    if (isDangerousLevel) {
+      gradient.addColorStop(0, '#1a0505');
+      gradient.addColorStop(0.5, '#2c0b1a');
+      gradient.addColorStop(1, '#0f0205');
+    } else {
+      gradient.addColorStop(0, '#090d16');
+      gradient.addColorStop(0.5, '#131b2e');
+      gradient.addColorStop(1, '#05070c');
+    }
+
     ctx.fillStyle = gradient;
     ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 
     const starSeed = (row * 37 + column * 73) % 5;
     if (starSeed === 1) {
-      ctx.fillStyle = '#93c5fd';
+      ctx.fillStyle = isDangerousLevel ? '#f87171' : '#93c5fd';
       ctx.fillRect(x + 8, y + 12, 2, 2);
     } else if (starSeed === 3) {
-      ctx.fillStyle = '#fde047';
+      ctx.fillStyle = isDangerousLevel ? '#fbbf24' : '#fde047';
       ctx.fillRect(x + 22, y + 20, 1.5, 1.5);
     }
   }
@@ -561,30 +704,72 @@ export class BombermanEngine {
   private renderEnemies(ctx: CanvasRenderingContext2D): void {
     for (const enemy of this.enemies) {
       const { x, y } = enemy;
+      const isAdvanced = (enemy as Enemy & { isAdvanced?: boolean }).isAdvanced;
 
-      ctx.fillStyle = '#012915';
-      ctx.beginPath();
-      ctx.arc(x + 16, y + 16, 14, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#012915';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.save();
+      if (isAdvanced) {
+        ctx.fillStyle = '#581c87';
+        ctx.beginPath();
+        ctx.arc(x + 16, y + 16, 15, 0, Math.PI * 2);
+        ctx.fill();
 
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x + 9, y + 10, 4, 6);
-      ctx.fillRect(x + 19, y + 10, 4, 6);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(x + 11, y + 12, 2, 3);
-      ctx.fillRect(x + 21, y + 12, 2, 3);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(x + 8, y + 6);
+        ctx.lineTo(x + 12, y - 2);
+        ctx.lineTo(x + 16, y + 6);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x + 16, y + 6);
+        ctx.lineTo(x + 20, y - 2);
+        ctx.lineTo(x + 24, y + 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(x + 8, y + 10, 5, 5);
+        ctx.fillRect(x + 19, y + 10, 5, 5);
+
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(x + 10, y + 12, 2, 2);
+        ctx.fillRect(x + 21, y + 12, 2, 2);
+      } else {
+        ctx.fillStyle = '#012915';
+        ctx.beginPath();
+        ctx.arc(x + 16, y + 16, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#012915';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x + 9, y + 10, 4, 6);
+        ctx.fillRect(x + 19, y + 10, 4, 6);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(x + 11, y + 12, 2, 3);
+        ctx.fillRect(x + 21, y + 12, 2, 3);
+      }
+      ctx.restore();
     }
   }
 
   private renderPlayer(ctx: CanvasRenderingContext2D): void {
     if (!this.player.isAlive) return;
 
+    const now = performance.now();
+    const isInvulnerable =
+      now < this.spawnInvulnerabilityUntil || (this.respawnAt !== null && now < this.respawnAt);
+    if (isInvulnerable && Math.floor(now / 100) % 2 === 0) {
+      return;
+    }
+
     let row = 2;
     let column = 7;
-    const animationFrame = Math.floor(performance.now() / 120) % 6;
+    const animationFrame = Math.floor(now / 120) % 6;
 
     if (this.moveDir.x > 0) {
       row = 1;
@@ -600,10 +785,11 @@ export class BombermanEngine {
       column = 7 + animationFrame;
     }
 
-    const spriteWidth = 36;
-    const spriteHeight = 29;
+    const spriteWidth = 22;
+    const spriteHeight = 30;
     const renderX = Math.round(this.player.x + (TILE_SIZE - spriteWidth) / 2 + 1);
-    const renderY = Math.round(this.player.y + (TILE_SIZE - spriteHeight) / 2 + 2);
+    const renderY = Math.round(this.player.y + (TILE_SIZE - spriteHeight) / 2 - 2);
+
     const drawn = this.playerAtlas.draw(
       ctx,
       row,
@@ -618,5 +804,47 @@ export class BombermanEngine {
       ctx.fillStyle = '#3b82f6';
       ctx.fillRect(renderX, renderY, spriteWidth, spriteHeight);
     }
+  }
+
+  private renderVictoryEffects(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    const now = performance.now();
+    for (let i = 0; i < 25; i++) {
+      const x = (Math.sin(i * 99 + now / 400) * 0.5 + 0.5) * CANVAS_WIDTH;
+      const y = (i * 37 + now / 300) % CANVAS_HEIGHT;
+      ctx.fillStyle = i % 2 === 0 ? '#fde047' : '#38bdf8';
+      ctx.fillRect(x, y, 4, 4);
+    }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.font = 'bold 36px sans-serif';
+    ctx.shadowColor = '#eab308';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#facc15';
+    ctx.fillText('🏆 VITÓRIA ÉPICA! 🏆', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+
+    ctx.font = 'bold 18px sans-serif';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(
+      `Salvou a Galáxia! Pontuação Final: ${this.score}`,
+      CANVAS_WIDTH / 2,
+      CANVAS_HEIGHT / 2 + 15,
+    );
+
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(
+      'Pressione Reiniciar para Jogar Novamente',
+      CANVAS_WIDTH / 2,
+      CANVAS_HEIGHT / 2 + 65,
+    );
+
+    ctx.restore();
   }
 }

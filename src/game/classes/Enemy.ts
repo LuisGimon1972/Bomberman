@@ -16,14 +16,19 @@ export class Enemy {
   public y: number;
   public width: number = 32;
   public height: number = 32;
-  public speed: number = 1.5; // Reduzido de 2.2 para 1.5 (mais lento e fácil de escapar)
+  public speed: number;
+  public isAdvanced: boolean;
   public direction: { x: number; y: number } = { x: 1, y: 0 };
   public isAlive: boolean = true;
   private chaseCooldown: number = 0;
 
-  constructor(r: number, c: number) {
+  constructor(r: number, c: number, isAdvanced: boolean = false) {
     this.x = c * TILE_SIZE + (TILE_SIZE - 32) / 2;
     this.y = r * TILE_SIZE + (TILE_SIZE - 32) / 2;
+    this.isAdvanced = isAdvanced;
+
+    // Inimigos avançados (Nível 4+) são mais rápidos e agressivos
+    this.speed = isAdvanced ? 2.3 : 1.5;
   }
 
   public update(grid: number[][], bombs: BombRef[] = [], player?: PlayerRef) {
@@ -31,8 +36,10 @@ export class Enemy {
 
     if (player && player.isAlive) {
       this.chaseCooldown++;
-      // Aumentado para 75 frames (~1.2 segundos), tornando a perseguição muito mais suave e espaçada
-      if (this.chaseCooldown > 75) {
+      // Inimigos avançados recalculam a perseguição muito mais frequentemente
+      const threshold = this.isAdvanced ? 25 : 65;
+
+      if (this.chaseCooldown > threshold) {
         this.chaseCooldown = 0;
         this.intensifyChase(player, grid, bombs);
       }
