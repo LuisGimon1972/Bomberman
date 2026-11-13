@@ -16,7 +16,7 @@ export class Enemy {
   public y: number;
   public width: number = 32;
   public height: number = 32;
-  public speed: number = 2.2;
+  public speed: number = 1.5; // Reduzido de 2.2 para 1.5 (mais lento e fácil de escapar)
   public direction: { x: number; y: number } = { x: 1, y: 0 };
   public isAlive: boolean = true;
   private chaseCooldown: number = 0;
@@ -26,14 +26,13 @@ export class Enemy {
     this.y = r * TILE_SIZE + (TILE_SIZE - 32) / 2;
   }
 
-  // Perseguição intensificada e constante ao jogador
   public update(grid: number[][], bombs: BombRef[] = [], player?: PlayerRef) {
     if (!this.isAlive) return;
 
     if (player && player.isAlive) {
       this.chaseCooldown++;
-      // A cada 12 frames (~0.2 segundos), atualiza agressivamente a direção rumo ao jogador
-      if (this.chaseCooldown > 12) {
+      // Aumentado para 75 frames (~1.2 segundos), tornando a perseguição muito mais suave e espaçada
+      if (this.chaseCooldown > 75) {
         this.chaseCooldown = 0;
         this.intensifyChase(player, grid, bombs);
       }
@@ -46,17 +45,14 @@ export class Enemy {
       this.x = nextX;
       this.y = nextY;
     } else {
-      // Se colidiu com parede ou bomba, desvia imediatamente
       this.changeDirection(grid, bombs);
     }
   }
 
-  // Rastreio agressivo e direto à posição do jogador
   private intensifyChase(player: PlayerRef, grid: number[][], bombs: BombRef[]) {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
 
-    // Ordena as direções rigorosamente pela menor distância até ao jogador
     const directionsByPriority: { x: number; y: number }[] = [];
 
     if (Math.abs(dx) > Math.abs(dy)) {
@@ -71,7 +67,6 @@ export class Enemy {
       directionsByPriority.push({ x: 0, y: dy > 0 ? -1 : 1 });
     }
 
-    // Tenta aplicar a melhor direção livre de colisões
     for (const dir of directionsByPriority) {
       const testX = this.x + dir.x * TILE_SIZE * 0.4;
       const testY = this.y + dir.y * TILE_SIZE * 0.4;
@@ -89,7 +84,6 @@ export class Enemy {
       { x: 0, y: 1 },
       { x: 0, y: -1 },
     ];
-    // Tenta encontrar uma direção alternativa válida que não bata de imediato
     const validDirs = dirs.filter((dir) => {
       const testX = this.x + dir.x * TILE_SIZE * 0.4;
       const testY = this.y + dir.y * TILE_SIZE * 0.4;
