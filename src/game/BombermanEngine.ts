@@ -20,7 +20,6 @@ const PLAYER_INVULNERABILITY_MS = 1_000;
 const ENEMY_SCORE = 200;
 const BOMB_RANGE = 99;
 const ENEMY_SPAWN_ATTEMPTS = 250;
-// O pedido de bomba fica pendente até ser satisfeito; não expira por tempo.
 
 export class BombermanEngine {
   public map: BombermanMap;
@@ -35,10 +34,7 @@ export class BombermanEngine {
   public isGameOver = false;
   public isVictory = false;
   public moveDir: Direction = { x: 0, y: 0 };
-
-  // Coração bónus exclusivo do Nível 5
   public heartBonus: { r: number; c: number; collected: boolean } | null = null;
-
   private lastTime = 0;
   private respawnAt: number | null = null;
   private spawnInvulnerabilityUntil = 0;
@@ -122,34 +118,19 @@ export class BombermanEngine {
     }
   }
 
-  /**
-   * Colocação garantida de bomba com tolerância de grelha otimizada.
-   */
-  /** Número real de bombas ativas do jogador (fonte única de verdade). */
   private countActiveBombs(): number {
     return this.bombs.length;
   }
 
-  /**
-   * Coloca uma bomba na célula exata onde o jogador está.
-   * Devolve true apenas quando a bomba é realmente criada.
-   */
   public placeBomb(): boolean {
     if (!this.player.isAlive || this.isGameOver || this.isVictory) return false;
-
-    // Mesma célula usada pela colisão, pelo dano e pelo render.
     const { r, c } = this.player.getGridPosition();
 
-    // O jogador pode ficar meio dentro da parede durante o movimento. Nesse
-    // caso, arredondamos para a célula mais próxima do centro do sprite
-    // (nunca para uma célula vizinha aleatória), mantendo a coerência visual.
     const cell = this.resolveBombCell(r, c);
     if (!cell) return false;
 
-    // Limite calculado a partir das bombas reais, não de um contador paralelo.
     if (this.countActiveBombs() >= this.player.bombLimit) return false;
 
-    // Nunca duas bombas na mesma célula.
     if (this.bombs.some((bomb) => bomb.r === cell.r && bomb.c === cell.c)) return false;
 
     this.bombs.push(new Bomb(cell.r, cell.c, BOMB_RANGE));
@@ -159,12 +140,6 @@ export class BombermanEngine {
     return true;
   }
 
-  /**
-   * Escolhe a célula da bomba: a do jogador; se estiver bloqueada (a deslizar
-   * para fora de uma parede), a célula do centro do sprite; se o centro também
-   * estiver bloqueado, a célula livre mais próxima do centro. Assim o espaço
-   * nunca é ignorado enquanto o jogador estiver sobre chão jogável.
-   */
   private resolveBombCell(startR: number, startC: number): { r: number; c: number } | null {
     if (this.isBombCellFree(startR, startC)) return { r: startR, c: startC };
 
@@ -175,7 +150,6 @@ export class BombermanEngine {
 
     if (this.isBombCellFree(centerR, centerC)) return { r: centerR, c: centerC };
 
-    // Célula livre com o centro mais próximo do centro do jogador.
     let best: { r: number; c: number } | null = null;
     let bestDistance = Infinity;
 
@@ -208,12 +182,6 @@ export class BombermanEngine {
     return this.map.grid[r]?.[c] === TileType.EMPTY;
   }
 
-  /**
-   * Regista um pedido de bomba. Tenta colocar imediatamente; se ainda não for
-   * possível (limite de bombas, célula ocupada), o pedido fica pendente e é
-   * repetido em cada frame até ser satisfeito. Só é descartado se o jogador
-   * morrer, o nível mudar ou o jogo terminar — nunca por tempo.
-   */
   public requestBomb(): void {
     if (this.isGameOver || this.isVictory) return;
 
@@ -227,15 +195,12 @@ export class BombermanEngine {
   private tryPlaceRequestedBomb(): void {
     if (!this.pendingBomb) return;
 
-    // Pedido já satisfeito: um toque coloca exatamente uma bomba.
     if (this.placedBombToken === this.bombRequestToken) {
       this.pendingBomb = false;
       this.bombRequestAt = null;
       return;
     }
 
-    // Mantém o pedido pendente enquanto o jogador não puder colocar
-    // (por exemplo, à espera que a bomba anterior expluda).
     try {
       if (this.placeBomb()) {
         this.pendingBomb = false;
@@ -247,7 +212,6 @@ export class BombermanEngine {
     }
   }
 
-  /** Descarta qualquer pedido pendente. */
   private clearBombRequest(): void {
     this.pendingBomb = false;
     this.bombRequestAt = null;
@@ -270,7 +234,6 @@ export class BombermanEngine {
       this.playSound('extralife');
     }
 
-    // Processa a tentativa pendente a cada frame para garantir que nunca falha
     this.tryPlaceRequestedBomb();
 
     if (this.player.isAlive) {
