@@ -20,7 +20,7 @@ const PLAYER_INVULNERABILITY_MS = 1_000;
 const ENEMY_SCORE = 200;
 const BOMB_RANGE = 99;
 const ENEMY_SPAWN_ATTEMPTS = 250;
-const BOMB_INPUT_BUFFER_MS = 2_000; // Buffer estendido para garantir a execução imediata
+// O pedido de bomba fica pendente até ser satisfeito; não expira por tempo.
 
 export class BombermanEngine {
   public map: BombermanMap;
@@ -44,6 +44,7 @@ export class BombermanEngine {
   private spawnInvulnerabilityUntil = 0;
   private lastLifeScoreThreshold = 0;
   private bombRequestAt: number | null = null;
+  private pendingBomb = false;
   private bombRequestToken = 0;
   private placedBombToken = -1;
   private audioCtx: AudioContext | null = null;
@@ -88,11 +89,11 @@ export class BombermanEngine {
     this.explosions = [];
     this.enemies = [];
     this.respawnAt = null;
-    this.bombRequestAt = null;
+    this.clearBombRequest();
     this.lastTime = 0;
     this.heartBonus = null;
 
-    this.spawnInvulnerabilityUntil = performance.now() + 1500;
+    this.spawnInvulnerabilityUntil = performance.now() + 2500;
 
     if (this.level === 5) {
       this.spawnHeartBonus();
@@ -124,22 +125,79 @@ export class BombermanEngine {
   /**
    * Colocação garantida de bomba com tolerância de grelha otimizada.
    */
+  /** Número real de bombas ativas do jogador (fonte única de verdade). */
+  private countActiveBombs(): number {
+    return this.bombs.length;
+  }
+
+  /**
+   * Coloca uma bomba na célula exata onde o jogador está.
+   * Devolve true apenas quando a bomba é realmente criada.
+   */
   public placeBomb(): boolean {
     if (!this.player.isAlive || this.isGameOver || this.isVictory) return false;
-    if (this.player.activeBombs >= this.player.bombLimit) return false;
 
-    // Obtém a célula central atual do jogador com base no centro do sprite
+    // Mesma célula usada pela colisão, pelo dano e pelo render.
     const { r, c } = this.player.getGridPosition();
 
-    // Validações robustas de disponibilidade da célula
-    if (!this.isBombCellFree(r, c)) return false;
-    if (this.bombs.some((bomb) => bomb.r === r && bomb.c === c)) return false;
+    // O jogador pode ficar meio dentro da parede durante o movimento. Nesse
+    // caso, arredondamos para a célula mais próxima do centro do sprite
+    // (nunca para uma célula vizinha aleatória), mantendo a coerência visual.
+    const cell = this.resolveBombCell(r, c);
+    if (!cell) return false;
 
-    this.bombs.push(new Bomb(r, c, BOMB_RANGE));
-    this.player.activeBombs += 1;
+    // Limite calculado a partir das bombas reais, não de um contador paralelo.
+    if (this.countActiveBombs() >= this.player.bombLimit) return false;
+
+    // Nunca duas bombas na mesma célula.
+    if (this.bombs.some((bomb) => bomb.r === cell.r && bomb.c === cell.c)) return false;
+
+    this.bombs.push(new Bomb(cell.r, cell.c, BOMB_RANGE));
+    this.player.activeBombs = this.countActiveBombs();
     this.placedBombToken = this.bombRequestToken;
     this.playSound('bomb');
     return true;
+  }
+
+  /**
+   * Escolhe a célula da bomba: a do jogador; se estiver bloqueada (a deslizar
+   * para fora de uma parede), a célula do centro do sprite; se o centro também
+   * estiver bloqueado, a célula livre mais próxima do centro. Assim o espaço
+   * nunca é ignorado enquanto o jogador estiver sobre chão jogável.
+   */
+  private resolveBombCell(startR: number, startC: number): { r: number; c: number } | null {
+    if (this.isBombCellFree(startR, startC)) return { r: startR, c: startC };
+
+    const centerX = this.player.x + this.player.width / 2;
+    const centerY = this.player.y + this.player.height / 2;
+    const centerR = Math.floor(centerY / TILE_SIZE);
+    const centerC = Math.floor(centerX / TILE_SIZE);
+
+    if (this.isBombCellFree(centerR, centerC)) return { r: centerR, c: centerC };
+
+    // Célula livre com o centro mais próximo do centro do jogador.
+    let best: { r: number; c: number } | null = null;
+    let bestDistance = Infinity;
+
+    for (const candidate of [
+      { r: startR - 1, c: startC },
+      { r: startR + 1, c: startC },
+      { r: startR, c: startC - 1 },
+      { r: startR, c: startC + 1 },
+    ]) {
+      if (!this.isBombCellFree(candidate.r, candidate.c)) continue;
+
+      const dx = candidate.c * TILE_SIZE + TILE_SIZE / 2 - centerX;
+      const dy = candidate.r * TILE_SIZE + TILE_SIZE / 2 - centerY;
+      const distance = dx * dx + dy * dy;
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = candidate;
+      }
+    }
+
+    return best;
   }
 
   private isBombCellFree(r: number, c: number): boolean {
@@ -150,39 +208,49 @@ export class BombermanEngine {
     return this.map.grid[r]?.[c] === TileType.EMPTY;
   }
 
+  /**
+   * Regista um pedido de bomba. Tenta colocar imediatamente; se ainda não for
+   * possível (limite de bombas, célula ocupada), o pedido fica pendente e é
+   * repetido em cada frame até ser satisfeito. Só é descartado se o jogador
+   * morrer, o nível mudar ou o jogo terminar — nunca por tempo.
+   */
   public requestBomb(): void {
     if (this.isGameOver || this.isVictory) return;
 
     this.bombRequestToken += 1;
     this.bombRequestAt = performance.now();
+    this.pendingBomb = true;
 
+    this.tryPlaceRequestedBomb();
+  }
+
+  private tryPlaceRequestedBomb(): void {
+    if (!this.pendingBomb) return;
+
+    // Pedido já satisfeito: um toque coloca exatamente uma bomba.
+    if (this.placedBombToken === this.bombRequestToken) {
+      this.pendingBomb = false;
+      this.bombRequestAt = null;
+      return;
+    }
+
+    // Mantém o pedido pendente enquanto o jogador não puder colocar
+    // (por exemplo, à espera que a bomba anterior expluda).
     try {
-      this.tryPlaceRequestedBomb();
+      if (this.placeBomb()) {
+        this.pendingBomb = false;
+        this.bombRequestAt = null;
+      }
     } catch {
+      this.pendingBomb = false;
       this.bombRequestAt = null;
     }
   }
 
-  private tryPlaceRequestedBomb(): void {
-    if (this.bombRequestAt === null) return;
-
-    if (this.placedBombToken === this.bombRequestToken) {
-      this.bombRequestAt = null;
-      return;
-    }
-
-    if (performance.now() - this.bombRequestAt > BOMB_INPUT_BUFFER_MS) {
-      this.bombRequestAt = null;
-      return;
-    }
-
-    try {
-      if (this.placeBomb()) {
-        this.bombRequestAt = null;
-      }
-    } catch {
-      this.bombRequestAt = null;
-    }
+  /** Descarta qualquer pedido pendente. */
+  private clearBombRequest(): void {
+    this.pendingBomb = false;
+    this.bombRequestAt = null;
   }
 
   public update(): void {
@@ -423,7 +491,8 @@ export class BombermanEngine {
       if (!bomb.update(dt)) continue;
 
       this.bombs.splice(i, 1);
-      this.player.activeBombs = Math.max(0, this.player.activeBombs - 1);
+      // Contador derivado da lista real: nunca fica dessincronizado.
+      this.player.activeBombs = this.bombs.length;
       this.explosions.push(new Explosion(bomb.r, bomb.c, bomb.range, this.map));
       this.playSound('explode');
     }
@@ -483,7 +552,7 @@ export class BombermanEngine {
 
     this.player.isAlive = false;
     this.lives = Math.max(0, this.lives - 1);
-    this.bombRequestAt = null;
+    this.clearBombRequest();
     this.playSound('hurt');
 
     if (this.lives === 0) {

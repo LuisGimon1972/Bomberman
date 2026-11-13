@@ -31,7 +31,6 @@
       <div class="bomberman-container relative-position shadow-20">
         <canvas ref="canvasRef" width="525" height="455" class="bomberman-canvas"></canvas>
 
-        <!-- Efeito de Confetes / Partículas de Vitória Épica -->
         <div v-if="isVictory" class="victory-confetti-container absolute-full pointer-events-none">
           <span
             v-for="n in 35"
@@ -136,7 +135,7 @@
           <q-btn
             color="green-8"
             text-color="white"
-            icon="restart_alt"
+            label="Reiniciar"
             dense
             unelevated
             class="action-btn q-px-sm"
@@ -146,7 +145,7 @@
           <q-btn
             color="deep-orange-9"
             text-color="white"
-            icon="exit_to_app"
+            label="Sair"
             dense
             unelevated
             class="action-btn q-px-sm"
@@ -161,6 +160,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { BombermanEngine } from '../game/BombermanEngine';
+import { useRouter } from 'vue-router';
+const router = useRouter();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const wrapperRef = ref<HTMLElement | null>(null);
@@ -176,7 +177,6 @@ const isVictory = ref(false);
 
 const activeKeys = { left: false, right: false, up: false, down: false };
 
-// Gerador aleatório elegante para partículas de confete na vitória
 const getRandomConfettiStyle = (n: number) => {
   const colors = ['#facc15', '#38bdf8', '#ef4444', '#4ade80', '#c084fc', '#fb923c'];
   const left = (n * 3.1) % 100;
@@ -245,8 +245,10 @@ const triggerBomb = () => {
 };
 
 const exitGame = () => {
-  if (window.history.length > 1) window.history.back();
-  else isGameOver.value = true;
+  window.close();
+  setTimeout(() => {
+    router.push('/');
+  }, 100);
 };
 
 const restartGame = () => {
